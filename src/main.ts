@@ -175,7 +175,7 @@ export function vm(): ContextScope {
             )
           )
         } catch (e) {
-          return ensure_safe(e)
+          throw ensure_safe(e)
         }
       },
       construct(
