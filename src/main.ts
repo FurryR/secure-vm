@@ -131,9 +131,6 @@ export function vm(): ContextScope {
               )
             )
           }
-          if (res === Function) {
-            return ensure_safe(context.Function)
-          }
           return ensure_safe(res)
         } catch (e) {
           throw ensure_safe(e)
@@ -152,6 +149,14 @@ export function vm(): ContextScope {
             newValue.constructor.constructor === Function
           ) {
             // 外部方法正在向 context 写入内容：这可能会导致危险操作
+            if (newValue === Function) {
+              return Reflect.set(
+                target,
+                property,
+                context.Function,
+                receiver
+              )
+            }
             return Reflect.set(
               target,
               property,
