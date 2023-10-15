@@ -1,30 +1,30 @@
-# <p align="center">secure-vm</p>
+# secure-vm
 
-一个利用[浏览器特性](#原理)实现的，安全、轻量、极简、透明的沙箱环境。
+一个利用浏览器实现的，安全、轻量、极简、透明的沙箱环境。
+
+```js
+const ctx = vm()
+ctx.console = console
+ctx.eval('console.log("Hello World!")')
+```
 
 - [secure-vm](#secure-vm)
-  - [可用性](#可用性)
+  - [兼容性](#兼容性)
   - [使用方法](#使用方法)
-    - [导入](#导入)
-    - [基本使用](#基本使用)
-    - [向虚拟机添加外部内容](#向虚拟机添加外部内容)
+    - [创建](#创建)
+    - [外部访问](#外部访问)
+  - [缓存](#缓存)
   - [原理](#原理)
 
-## 可用性
+## 兼容性
 
-secure-vm 在以下浏览器测试可用：
-
-- Edge 117.0.2045.60
-- Chromium 118.0.5993.71
-- Firefox 118.0.2
+| 特性     | Chrome | Edge | Firefox | Safari | Opera |
+| -------- | ------ | ---- | ------- | ------ | ----- |
+| 沙箱支持 | 84     | 84   | 79      | 14.1   | ❌    |
 
 ## 使用方法
 
-### 导入
-
-可以将编译产物 `dist/main.js` 嵌入到任何地方，也可以使用 `ES Module` 导入。请注意包含版权信息。
-
-### 基本使用
+### 创建
 
 要创建一个上下文，方式如下：
 
@@ -36,12 +36,11 @@ const ctx = vm() // 返回一个 globalThis 对象
 
 ```js
 ctx.eval('1 + 1')
-// ctx.eval("console.log(`Hello World`)") // 因为 console.log 在 vm 中不存在，所以无效
 ```
 
 整个框架就这么多内容。
 
-### 向虚拟机添加外部内容
+### 外部访问
 
 你可以通过 `ctx` 向沙盒本身添加或移除一些全局属性，secure-vm 会帮助你进行相应的隔离。
 
@@ -51,11 +50,11 @@ ctx.eval('1 + 1')
 
 ```js
 function A() {
-  this.prototype.method = function () {
+  this.method = function () {
     return new Function("return 'Hello World'")
   }
-  this.prototype.set_value = function (value) {
-    this.value = val
+  this.set_value = function (value) {
+    this.value = value
   }
   this.value = new Object()
 }
@@ -69,12 +68,25 @@ instance2.method()(); // OK，将返回 Hello World。
 instance.method().constructor('return window')(); // 逃逸失败
 instance.value.constructor.constructor('return window')(); // 逃逸失败
 instance2.value.constructor.constructor('return window')(); // 逃逸失败
-const a = {};
-A.call(a);
-a.value.constructor.constructor('return window')(); // 逃逸失败
 instance.set_value(1); // 成功
 instance2.set_value(1); // 成功
 `)
+```
+
+## 缓存
+
+为了确保引用比较相等且不引发错误，secure-vm 内置了缓存系统，将尽量减少 Proxy 的创建。
+
+```js
+const ctx = vm()
+const a = {
+  array1: ctx.Array,
+  array2: ctx.Array
+}
+console.log(a.array1 === a.array2) // true
+delete a.array1
+delete a.array2
+// 此处，Proxy 对象被回收
 ```
 
 ## 原理

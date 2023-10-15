@@ -87,11 +87,18 @@ type ContextScope = ScopeHelper<typeof whitelist> & {
 }
 /**
  * 创建虚拟机上下文。
+ * @returns 虚拟机上下文。
  */
 export function vm(): ContextScope {
+  const cache = new WeakMap<object, WeakRef<object>>()
   const proxify = <T extends object>(context: ContextScope, obj: T): T => {
+    if (cache.has(obj)) {
+      const v = cache.get(obj)?.deref()
+      if (v !== undefined) return v as T
+      else cache.delete(obj)
+    }
     const ensure_safe = <T>(res: T): T => {
-      if (res == Function) return context.Function as T
+      if (res === Function) return proxify(context, context.Function) as T
       if (
         res != null &&
         (typeof res === 'object' || typeof res === 'function')
@@ -100,7 +107,7 @@ export function vm(): ContextScope {
       }
       return res
     }
-    const safeify = <T extends Function>(fn: T): T => {
+    const safeify = <T extends (...args: unknown[]) => unknown>(fn: T): T => {
       return function (this: unknown, ...args: unknown[]) {
         try {
           return ensure_safe(fn.apply(this, args))
@@ -109,7 +116,7 @@ export function vm(): ContextScope {
         }
       } as unknown as T
     }
-    return new Proxy(obj, {
+    const proxy = new Proxy(obj, {
       get(
         target: object,
         property: string | symbol,
@@ -118,12 +125,14 @@ export function vm(): ContextScope {
         try {
           const res = Reflect.get(target, property, receiver)
           if (typeof target === 'function' && property === 'prototype') {
-            context.eval(`throw new TypeError(
-              'Accessing prototype by constructor is not supported. Use Object.getPrototypeOf() or Reflect.getPrototypeOf() instead'
-            )`)
+            throw ensure_safe(
+              new TypeError(
+                'Accessing prototype by constructor is not supported. Use Object.getPrototypeOf() or Reflect.getPrototypeOf() instead'
+              )
+            )
           }
           if (res === Function) {
-            return context.Function
+            return ensure_safe(context.Function)
           }
           return ensure_safe(res)
         } catch (e) {
@@ -162,7 +171,7 @@ export function vm(): ContextScope {
             return ensure_safe(
               Reflect.apply(
                 target as (this: unknown, ...args: unknown[]) => unknown,
-                proxify(context, context),
+                ensure_safe(context),
                 argArray
               )
             )
@@ -184,8 +193,7 @@ export function vm(): ContextScope {
         // newTarget: Function // prototype access violation
       ): object {
         try {
-          return proxify(
-            context,
+          return ensure_safe(
             Reflect.construct(
               target as new (...args: unknown[]) => object,
               argArray
@@ -203,7 +211,7 @@ export function vm(): ContextScope {
           Reflect.ownKeys(res).forEach(key =>
             Reflect.set(temp, key, Reflect.get(res, key))
           )
-          return proxify(context, temp)
+          return ensure_safe(temp)
         } catch (e) {
           throw ensure_safe(e)
         }
@@ -237,6 +245,7 @@ export function vm(): ContextScope {
               const temp: Partial<PropertyDescriptor> = {}
               if (get) temp.get = safeify(get)
               if (set) temp.set = safeify(set)
+              else temp.set = undefined
               if (attributes.writable) temp.writable = attributes.writable
               if (attributes.enumerable) temp.enumerable = attributes.enumerable
               if (attributes.configurable)
@@ -260,12 +269,12 @@ export function vm(): ContextScope {
           (typeof res.value === 'function' || typeof res.value === 'object') &&
           res.value.constructor.constructor === Function
         ) {
-          return {
+          return ensure_safe({
             writable: res.writable,
             enumerable: res.enumerable,
             configurable: res.configurable,
             value: ensure_safe(res.value)
-          }
+          })
         } else {
           const { get, set } = res
           if (
@@ -273,12 +282,12 @@ export function vm(): ContextScope {
               (set != undefined && typeof set === 'function')) &&
             (get?.constructor === Function || set?.constructor === Function)
           ) {
-            return {
+            return ensure_safe({
               enumerable: res.enumerable,
               configurable: res.configurable,
               get: ensure_safe(get),
               set: ensure_safe(set)
-            }
+            })
           }
         }
         return res
@@ -293,6 +302,8 @@ export function vm(): ContextScope {
         return false
       }
     }) as T
+    cache.set(obj, new WeakRef<object>(proxy))
+    return proxy
   }
   const createContext = (
     whitelist: readonly (string | symbol)[]
@@ -308,7 +319,9 @@ export function vm(): ContextScope {
       if (!whitelist.includes(key)) {
         try {
           if (Object.is(Reflect.get(win, key), win)) continue
-        } catch (_) {} // Firefox 118: Reflect.get(win, 'screen') -> NS_ERROR_UNEXPECTED internal error
+        } catch (_) {
+          // eslint-disable-next-line no-empty
+        } // Firefox 118: Reflect.get(win, 'screen') -> NS_ERROR_UNEXPECTED internal error
         if (!Reflect.deleteProperty(win, key)) {
           try {
             Reflect.set(win, key, undefined)
