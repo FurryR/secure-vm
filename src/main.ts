@@ -90,98 +90,77 @@ type ContextScope = ScopeHelper<typeof whitelist> & {
  * @returns 虚拟机上下文。
  */
 export function vm(): ContextScope {
-  const cache = new WeakMap<object, WeakRef<object>>()
-  const proxify = <T extends object>(context: ContextScope, obj: T): T => {
-    if (cache.has(obj)) {
-      const v = cache.get(obj)?.deref()
-      if (v !== undefined) return v as T
-      else cache.delete(obj)
-    }
-    const ensure_safe = <T>(res: T): T => {
-      if (res === Function) return proxify(context, context.Function) as T
-      if (
-        res != null &&
-        (typeof res === 'object' || typeof res === 'function')
-      ) {
-        return proxify(context, res)
+  const elem = document.createElement('iframe')
+  elem.src = 'about:blank'
+  elem.style.display = 'none'
+  document.head.appendChild(elem)
+  const context = elem.contentWindow as unknown as ContextScope
+  document.head.removeChild(elem)
+  if (!context) throw new Error('Could not create context')
+  for (const key of Reflect.ownKeys(context)) {
+    if (!(whitelist as readonly (string | symbol)[]).includes(key)) {
+      try {
+        if (Object.is(Reflect.get(context, key), context)) continue
+      } catch (_) {
+        // eslint-disable-next-line no-empty
+      } // Firefox 118: Reflect.get(win, 'screen') -> NS_ERROR_UNEXPECTED internal error
+      if (!Reflect.deleteProperty(context, key)) {
+        try {
+          Reflect.set(context, key, undefined)
+          if (Reflect.get(context, key) != undefined) throw new Error() // 即使是 null 也是可接受的
+        } catch (_) {
+          const val = Reflect.get(context, key)
+          if (typeof val === 'object' && val !== null) {
+            Reflect.setPrototypeOf(val, null)
+            Reflect.preventExtensions(val)
+          }
+        }
       }
-      return res
     }
-    const safeify = <T extends (...args: unknown[]) => unknown>(fn: T): T => {
-      return function (this: unknown, ...args: unknown[]) {
-        try {
-          return ensure_safe(fn.apply(this, args))
-        } catch (e) {
-          return ensure_safe(e)
-        }
-      } as unknown as T
+  }
+  const inner_cache = new Map<object, WeakRef<object>>()
+  const outer_cache = new Map<object, WeakRef<object>>()
+  function inner_proxify<T>(target: T, dummy?: object): T {
+    if (
+      target === null ||
+      (typeof target !== 'object' && typeof target !== 'function')
+    )
+      return target
+    if (inner_cache.has(target)) {
+      const v = inner_cache.get(target)?.deref()
+      if (v !== undefined) return v as T
     }
-    const proxy = new Proxy(obj, {
-      get(
-        target: object,
-        property: string | symbol,
-        receiver: unknown
-      ): unknown {
+    if (typeof target === 'function' && dummy === undefined)
+      return inner_proxify(target, function () {})
+    const proxy = new Proxy<object>(dummy ?? target, {
+      get(_: object, property: string | symbol): unknown {
         try {
-          const res = Reflect.get(target, property, receiver)
-          if (typeof target === 'function' && property === 'prototype') {
-            throw ensure_safe(
-              new TypeError(
-                'Accessing prototype by constructor is not supported. Use Object.getPrototypeOf() or Reflect.getPrototypeOf() instead'
-              )
-            )
-          }
-          return ensure_safe(res)
+          const res = Reflect.get(target, property)
+          if (res === Function) return context.Function
+          return inner_proxify(res)
         } catch (e) {
-          throw ensure_safe(e)
+          throw inner_proxify(e)
         }
       },
-      set(
-        target: object,
-        property: string | symbol,
-        newValue: unknown,
-        receiver: unknown
-      ): boolean {
+      has(_: object, property: string | symbol): boolean {
+        return Reflect.has(target, property)
+      },
+      deleteProperty(_: object, property: string | symbol): boolean {
+        return Reflect.deleteProperty(target, property)
+      },
+      ownKeys(_: object): ArrayLike<string | symbol> {
+        return Reflect.ownKeys(target)
+      },
+      set(_: object, property: string | symbol, newValue: unknown): boolean {
         try {
-          if (
-            newValue != null &&
-            (typeof newValue === 'function' || typeof newValue === 'object') &&
-            newValue.constructor.constructor === Function
-          ) {
-            // 外部方法正在向 context 写入内容：这可能会导致危险操作
-            if (newValue === Function) {
-              return Reflect.set(
-                target,
-                property,
-                context.Function,
-                receiver
-              )
-            }
-            return Reflect.set(
-              target,
-              property,
-              ensure_safe(newValue),
-              receiver
-            ) // 为避免在外部方法上伪造 this 致方法泄露
-          }
-          return Reflect.set(target, property, newValue, receiver)
+          return Reflect.set(target, property, newValue)
         } catch (e) {
-          throw ensure_safe(e)
+          throw inner_proxify(e)
         }
       },
-      apply(target: object, thisArg: unknown, argArray: unknown[]): unknown {
+      apply(_: object, thisArg: unknown, argArray: unknown[]): unknown {
         try {
-          if (thisArg == undefined) {
-            // 防止当 thisArg 为 undefined 时函数污染主页面作用域。
-            return ensure_safe(
-              Reflect.apply(
-                target as (this: unknown, ...args: unknown[]) => unknown,
-                ensure_safe(context),
-                argArray
-              )
-            )
-          }
-          return ensure_safe(
+          return inner_proxify(
             Reflect.apply(
               target as (this: unknown, ...args: unknown[]) => unknown,
               thisArg,
@@ -189,116 +168,138 @@ export function vm(): ContextScope {
             )
           )
         } catch (e) {
-          throw ensure_safe(e)
+          throw inner_proxify(e)
         }
       },
-      construct(
-        target: object,
-        argArray: unknown[]
-        // newTarget: Function // prototype access violation
-      ): object {
+      construct(_: object, argArray: unknown[]): object {
         try {
-          return ensure_safe(
+          return inner_proxify(
             Reflect.construct(
               target as new (...args: unknown[]) => object,
               argArray
             )
           )
         } catch (e) {
-          throw ensure_safe(e)
-        }
-      },
-      getPrototypeOf(target: object): object | null {
-        try {
-          const res = Reflect.getPrototypeOf(target)
-          if (res === null) return res
-          const temp = {}
-          Reflect.ownKeys(res).forEach(key =>
-            Reflect.set(temp, key, Reflect.get(res, key))
-          )
-          return ensure_safe(temp)
-        } catch (e) {
-          throw ensure_safe(e)
-        }
-      },
-      defineProperty(
-        target: object,
-        property: string | symbol,
-        attributes: PropertyDescriptor
-      ): boolean {
-        try {
-          if (
-            attributes.value != undefined &&
-            (typeof attributes.value === 'function' ||
-              typeof attributes.value === 'object') &&
-            attributes.value.constructor.constructor === Function
-          ) {
-            const temp: Partial<PropertyDescriptor> = {}
-            temp.value = ensure_safe(attributes.value)
-            if (attributes.writable) temp.writable = attributes.writable
-            if (attributes.enumerable) temp.enumerable = attributes.enumerable
-            if (attributes.configurable)
-              temp.configurable = attributes.configurable
-            return Reflect.defineProperty(target, property, temp)
-          } else {
-            const { get, set } = attributes
-            if (
-              ((get != undefined && typeof get === 'function') ||
-                (set != undefined && typeof set === 'function')) &&
-              (get?.constructor === Function || set?.constructor === Function)
-            ) {
-              const temp: Partial<PropertyDescriptor> = {}
-              if (get) temp.get = safeify(get)
-              if (set) temp.set = safeify(set)
-              else temp.set = undefined
-              if (attributes.writable) temp.writable = attributes.writable
-              if (attributes.enumerable) temp.enumerable = attributes.enumerable
-              if (attributes.configurable)
-                temp.configurable = attributes.configurable
-              return Reflect.defineProperty(target, property, temp)
-            }
-          }
-          return Reflect.defineProperty(target, property, attributes)
-        } catch (e) {
-          throw ensure_safe(e)
+          throw inner_proxify(e)
         }
       },
       getOwnPropertyDescriptor(
-        target: object,
+        _: object,
         property: string | symbol
       ): PropertyDescriptor | undefined {
         const res = Reflect.getOwnPropertyDescriptor(target, property)
         if (res === undefined) return undefined
-        if (
-          res.value !== undefined &&
-          (typeof res.value === 'function' || typeof res.value === 'object') &&
-          res.value.constructor.constructor === Function
-        ) {
-          return ensure_safe({
-            writable: res.writable,
-            enumerable: res.enumerable,
-            configurable: res.configurable,
-            value: ensure_safe(res.value)
-          })
-        } else {
-          const { get, set } = res
-          if (
-            ((get != undefined && typeof get === 'function') ||
-              (set != undefined && typeof set === 'function')) &&
-            (get?.constructor === Function || set?.constructor === Function)
-          ) {
-            return ensure_safe({
-              enumerable: res.enumerable,
-              configurable: res.configurable,
-              get: ensure_safe(get),
-              set: ensure_safe(set)
-            })
-          }
+        if (typeof target === 'function' && property === 'prototype') {
+          const res2 = Reflect.getOwnPropertyDescriptor(_, property)
+          if (res2 === undefined) return undefined
+          if (res.value !== undefined) res2.value = inner_proxify(res.value)
+          if (res.get) res2.get = inner_proxify(res.get)
+          if (res.set) res2.set = inner_proxify(res.set)
+          return res2
         }
+        if (res.value !== undefined) res.value = inner_proxify(res.value)
+        if (res.get) res.get = inner_proxify(res.get)
+        if (res.set) res.set = inner_proxify(res.set)
         return res
       },
       isExtensible(): boolean {
-        return true
+        return Reflect.isExtensible(target)
+      },
+      preventExtensions(): boolean {
+        return false
+      },
+      setPrototypeOf(): boolean {
+        return false
+      },
+      defineProperty(
+        _: object,
+        property: string | symbol,
+        attributes: PropertyDescriptor
+      ): boolean {
+        return Reflect.defineProperty(target, property, attributes)
+      },
+      getPrototypeOf(_: object): object | null {
+        const res = Reflect.getPrototypeOf(target)
+        if (res === null) return res
+        return inner_proxify(res)
+      }
+    } as Required<ProxyHandler<object>>)
+    inner_cache.set(target, new WeakRef<object>(proxy))
+    return proxy as T
+  }
+  function outer_proxify<T>(target: T, dummy?: object): T {
+    if (
+      target === null ||
+      (typeof target !== 'object' && typeof target !== 'function')
+    )
+      return target
+    for (const [key, value] of inner_cache.entries()) {
+      if (value.deref() === target) {
+        return key as T
+      }
+    }
+    if (outer_cache.has(target)) {
+      const v = outer_cache.get(target)?.deref()
+      if (v !== undefined) return v as T
+    }
+    if (typeof target === 'function' && dummy === undefined)
+      return outer_proxify(target, function () {})
+    const proxy = new Proxy<object>(dummy ?? target, {
+      get(_: object, property: string | symbol): unknown {
+        try {
+          const res = Reflect.get(target, property)
+          return outer_proxify(res)
+        } catch (e) {
+          throw outer_proxify(e)
+        }
+      },
+      has(_: object, property: string | symbol): boolean {
+        return Reflect.has(target, property)
+      },
+      deleteProperty(_: object, property: string | symbol): boolean {
+        return Reflect.deleteProperty(target, property)
+      },
+      ownKeys(_: object): ArrayLike<string | symbol> {
+        return Reflect.ownKeys(target)
+      },
+      set(_: object, property: string | symbol, newValue: unknown): boolean {
+        try {
+          if (newValue === Function)
+            return Reflect.set(target, property, context.Function)
+          if (newValue === eval)
+            return Reflect.set(target, property, context.eval)
+          return Reflect.set(target, property, inner_proxify(newValue))
+        } catch (e) {
+          throw outer_proxify(e)
+        }
+      },
+      apply(_: object, thisArg: unknown, argArray: unknown[]): unknown {
+        try {
+          return outer_proxify(
+            Reflect.apply(
+              target as (this: unknown, ...args: unknown[]) => unknown,
+              thisArg,
+              argArray
+            )
+          )
+        } catch (e) {
+          throw outer_proxify(e)
+        }
+      },
+      construct(_: object, argArray: unknown[]): object {
+        try {
+          return outer_proxify(
+            Reflect.construct(
+              target as new (...args: unknown[]) => object,
+              argArray
+            )
+          )
+        } catch (e) {
+          throw outer_proxify(e)
+        }
+      },
+      isExtensible(): boolean {
+        return Reflect.isExtensible(target)
       },
       preventExtensions(): boolean {
         return false
@@ -306,43 +307,9 @@ export function vm(): ContextScope {
       setPrototypeOf(): boolean {
         return false
       }
-    }) as T
-    cache.set(obj, new WeakRef<object>(proxy))
-    return proxy
+    }) //  as Required<ProxyHandler<object>>
+    outer_cache.set(target, new WeakRef<object>(proxy))
+    return proxy as T
   }
-  const createContext = (
-    whitelist: readonly (string | symbol)[]
-  ): ContextScope => {
-    const elem = document.createElement('iframe')
-    elem.src = 'about:blank'
-    elem.style.display = 'none'
-    document.head.appendChild(elem)
-    const win = elem.contentWindow as unknown as ContextScope
-    document.head.removeChild(elem)
-    if (!win) throw new Error('Could not create context')
-    for (const key of Reflect.ownKeys(win)) {
-      if (!whitelist.includes(key)) {
-        try {
-          if (Object.is(Reflect.get(win, key), win)) continue
-        } catch (_) {
-          // eslint-disable-next-line no-empty
-        } // Firefox 118: Reflect.get(win, 'screen') -> NS_ERROR_UNEXPECTED internal error
-        if (!Reflect.deleteProperty(win, key)) {
-          try {
-            Reflect.set(win, key, undefined)
-            if (Reflect.get(win, key) != undefined) throw new Error() // 即使是 null 也是可接受的
-          } catch (_) {
-            const val = Reflect.get(win, key)
-            if (typeof val === 'object' && val !== null) {
-              Reflect.setPrototypeOf(val, null)
-              Reflect.preventExtensions(val)
-            }
-          }
-        }
-      }
-    }
-    return win
-  }
-  const context = createContext(whitelist)
-  return proxify(context, context)
+  return outer_proxify(context) as ContextScope
 }
