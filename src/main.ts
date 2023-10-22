@@ -126,6 +126,15 @@ export function vm(): ContextScope {
       (typeof target !== 'object' && typeof target !== 'function')
     )
       return target
+    let result: T | undefined = undefined
+    for (const [key, value] of outer_cache.entries()) {
+      const ref = value.deref()
+      if (ref === undefined) outer_cache.delete(key)
+      if (ref === target) {
+        result = key as T
+      }
+    }
+    if (result !== undefined) return result
     if (inner_cache.has(target)) {
       const v = inner_cache.get(target)?.deref()
       if (v !== undefined) return v as T
@@ -137,6 +146,7 @@ export function vm(): ContextScope {
         try {
           const res = Reflect.get(target, property)
           if (res === Function) return context.Function
+          if (res === eval) return context.eval
           return inner_proxify(res)
         } catch (e) {
           throw inner_proxify(e)
@@ -233,11 +243,15 @@ export function vm(): ContextScope {
       (typeof target !== 'object' && typeof target !== 'function')
     )
       return target
+    let result: T | undefined = undefined
     for (const [key, value] of inner_cache.entries()) {
-      if (value.deref() === target) {
-        return key as T
+      const ref = value.deref()
+      if (ref === undefined) inner_cache.delete(key)
+      if (ref === target) {
+        result = key as T
       }
     }
+    if (result !== undefined) return result
     if (outer_cache.has(target)) {
       const v = outer_cache.get(target)?.deref()
       if (v !== undefined) return v as T
@@ -306,8 +320,43 @@ export function vm(): ContextScope {
       },
       setPrototypeOf(): boolean {
         return false
+      },
+      defineProperty(
+        _: object,
+        property: string | symbol,
+        attributes: PropertyDescriptor
+      ): boolean {
+        return Reflect.defineProperty(target, property, attributes)
+      },
+      getPrototypeOf(_: object): object | null {
+        const res = Reflect.getPrototypeOf(target)
+        if (res === null) return res
+        return outer_proxify(res)
+      },
+      getOwnPropertyDescriptor(
+        _: object,
+        property: string | symbol
+      ): PropertyDescriptor | undefined {
+        const res = Reflect.getOwnPropertyDescriptor(target, property)
+        if (res === undefined) return undefined
+        if (typeof target === 'function' && property === 'prototype') {
+          const res2 = Reflect.getOwnPropertyDescriptor(_, property)
+          if (res2 === undefined) return undefined
+          delete res.get
+          delete res.value
+          delete res.set
+          if (res.value !== undefined) res2.value = outer_proxify(res.value)
+          if (res.get || res.set) delete res.writable
+          if (res.get) res2.get = outer_proxify(res.get)
+          if (res.set) res2.set = outer_proxify(res.set)
+          return res2
+        }
+        if (res.value !== undefined) res.value = outer_proxify(res.value)
+        if (res.get) res.get = outer_proxify(res.get)
+        if (res.set) res.set = outer_proxify(res.set)
+        return res
       }
-    }) //  as Required<ProxyHandler<object>>
+    } as Required<ProxyHandler<object>>)
     outer_cache.set(target, new WeakRef<object>(proxy))
     return proxy as T
   }
