@@ -210,11 +210,12 @@ export function vm(initalizer: Initalizer = iframe): ContextScope {
         },
         construct(_: object, argArray: unknown[]): object {
           try {
+            const r: unknown[] = []
+            for (const v of argArray) {
+              r.push(outer_proxify(v))
+            }
             return proxify(
-              Reflect.construct(
-                target as new (...args: unknown[]) => object,
-                argArray
-              )
+              Reflect.construct(target as new (...args: unknown[]) => object, r)
             )
           } catch (e) {
             throw proxify(e)
