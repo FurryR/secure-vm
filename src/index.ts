@@ -1,27 +1,28 @@
 /**
- * Copyright(c) 凌 2023.
+ * Copyright(c) FurryR 2023.
  * This project is licensed under the MIT license.
  */
 /**
- * 虚拟环境至少需要有的函数。
+ * The functions that the context needs to have.
  */
-export type ContextScope = {
-  eval: typeof eval
+type ScopeHelper<T extends keyof typeof globalThis> = {
   Function: typeof Function
 } & {
-  [key: string | symbol]: unknown
+  [key in T]: (typeof globalThis)[key]
 }
 /**
- * 生成虚拟环境用的函数类型。
+ * Function to generate a virtual environment.
  */
-export type Initalizer = () => ContextScope
+export type Initalizer = <
+  T extends readonly (keyof typeof globalThis)[]
+>() => ScopeHelper<T[number]>
 /**
- * 使用项目内置的 iframe 方式生成虚拟机环境。此方法可以确保环境和权限最小。
- * @param whitelist 白名单。在此名单内的函数/对象将不被删除。
- * @returns 虚拟机环境。
+ * Generate a virtual environment using iframe.
+ * @param whitelist Global whitelist.
+ * @returns Virtual environment.
  */
 export function iframe(
-  whitelist: string[] = [
+  whitelist: readonly (keyof typeof globalThis)[] = [
     'atob',
     'btoa',
     'clearInterval',
@@ -93,21 +94,17 @@ export function iframe(
     'undefined',
     'unescape'
   ]
-): ContextScope {
+): ScopeHelper<(typeof whitelist)[number]> {
   const elem = document.createElement('iframe')
   elem.src = 'about:blank'
   elem.style.display = 'none'
   document.head.appendChild(elem)
-  const context = elem.contentWindow as unknown as ContextScope
-  const clone = new Map<string, unknown>()
-  for (const key of whitelist) {
-    if (key in context) clone.set(key, context[key])
-  }
+  const context = elem.contentWindow as unknown as ScopeHelper<
+    (typeof whitelist)[number]
+  >
   document.head.removeChild(elem)
-  if (!context) throw new Error('Could not create context')
-  for (const [key, value] of clone.entries()) {
-    if (!(key in context)) context[key] = value
-  }
+  if (!context || !context['Function'] || !context['eval'])
+    throw new Error('Could not create context')
   for (const key of Reflect.ownKeys(context)) {
     if (!(whitelist as readonly (string | symbol)[]).includes(key)) {
       try {
@@ -118,7 +115,7 @@ export function iframe(
       if (!Reflect.deleteProperty(context, key)) {
         try {
           Reflect.set(context, key, undefined)
-          if (Reflect.get(context, key) != undefined) throw new Error() // 即使是 null 也是可接受的
+          if (Reflect.get(context, key)) throw new Error() // Acceptable even if it is null
         } catch (_) {
           const val = Reflect.get(context, key)
           if (typeof val === 'object' && val !== null) {
@@ -132,11 +129,11 @@ export function iframe(
   return context
 }
 /**
- * 创建虚拟机上下文。
- * @param initalizer 创建虚拟机环境的函数。
- * @returns 虚拟机上下文。
+ * Create an isolated context.
+ * @param initalizer Function to create a virtual environment.
+ * @returns Isolated context.
  */
-export function vm(initalizer: Initalizer = iframe): ContextScope {
+export function vm(initalizer: Initalizer = iframe): ReturnType<Initalizer> {
   const context = initalizer()
   type ProxifyType = <T>(target: T, dummy?: object) => T
   function proxify_generator(
@@ -291,9 +288,9 @@ export function vm(initalizer: Initalizer = iframe): ContextScope {
       return proxy as T
     }
   }
-  // inner_cache：实际对象 -> Proxy 对象
+  // inner_cache：Actual -> Proxy
   const inner_cache = new Map<object, WeakRef<object>>()
-  // outer_cache：Proxy 对象 -> 实际对象
+  // outer_cache：Proxy -> Actual
   const outer_cache = new Map<object, WeakRef<object>>()
   let outer_proxify: ProxifyType | null = null
   function lazy_outer<T>(target: T, dummy?: object): T {
@@ -315,5 +312,5 @@ export function vm(initalizer: Initalizer = iframe): ContextScope {
     inner_proxify,
     false
   )
-  return outer_proxify(context) as ContextScope
+  return outer_proxify(context)
 }

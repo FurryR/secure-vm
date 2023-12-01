@@ -1,13 +1,29 @@
 {
   "name": "secure-vm",
   "version": "1.0.0",
-  "description": "Secure VM module for Browsers based on iframe.",
-  "main": "index.js",
+  "description": "Experimental JavaScript sandbox based on iframe for frontend (electron, micro apps, etc).",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint ./src",
+    "lint:type": "tsc --noEmit -p ./tsconfig.json",
     "fix": "eslint ./src --fix",
-    "build": "tsc -p ./tsconfig.json"
+    "build": "tsup"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.com"
+  },
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FurryR/secure-vm.git"
   },
   "keywords": [
     "vm",
@@ -15,10 +31,15 @@
   ],
   "author": "FurryR",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/FurryR/secure-vm/issues"
+  },
+  "homepage": "https://github.com/FurryR/secure-vm#readme",
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.7.5",
     "@typescript-eslint/parser": "^6.7.5",
     "eslint": "^8.51.0",
+    "tsup": "^8.0.1",
     "typescript": "^5.2.2"
   }
 }
