@@ -185,7 +185,7 @@ export function vm<T extends keyof typeof globalThis>(
           deleteProperty(_: object, property: string | symbol): boolean {
             return Reflect.deleteProperty(target, property)
           },
-          ownKeys(_: object): ArrayLike<string | symbol> {
+          ownKeys(): ArrayLike<string | symbol> {
             return Reflect.ownKeys(target)
           },
           set(
@@ -294,7 +294,7 @@ export function vm<T extends keyof typeof globalThis>(
               configurable: true
             })
           },
-          getPrototypeOf(_: object): object | null {
+          getPrototypeOf(): object | null {
             const res = Reflect.getPrototypeOf(target)
             if (res === null) return res
             return proxify(res)
