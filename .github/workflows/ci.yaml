@@ -33,7 +33,7 @@ jobs:
       - name: 🔽 Install dependencies
         run: pnpm install
       - name: 🛠️ Build secure-vm
-        run: pnpm run build --if-present
+        run: pnpm run build
       - name: ✅ Publish package
         uses: JS-DevTools/npm-publish@v3
         env:
