@@ -8,6 +8,8 @@
 [![Visitors](https://hits.dwyl.com/FurryR/secure-vm.svg?style=flat-square)](http://github.com/FurryR/secure-vm)
 [![🛠️ Build](https://github.com/FurryR/secure-vm/actions/workflows/ci.yaml/badge.svg)](https://github.com/FurryR/secure-vm/actions/workflows/ci.yaml)
 
+[🇺🇸](./README.md) | [🇨🇳](./README-zh_CN.md)
+
 </div>
 
 ## ❓ What can it do?
@@ -41,7 +43,7 @@ pnpm install seucre-vm
 #### 👾 IIFE (not recommended)
 
 ```html
-<script src="index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/secure-vm@latest/dist/index.global.js"></script>
 <script>
   const ctx = SecureVM.vm()
 </script>
