@@ -149,7 +149,7 @@ export function vm<T extends keyof typeof globalThis>(
       outer_proxify: ProxifyType,
       safe: boolean
     ): ProxifyType => {
-      return function proxify<T>(target: T, dummy?: object): T {
+      let proxify = <T>(target: T, dummy?: object): T => {
         if (
           target === null ||
           (typeof target !== 'object' && typeof target !== 'function')
@@ -303,13 +303,14 @@ export function vm<T extends keyof typeof globalThis>(
         cache.set(target, new WeakRef<object>(proxy))
         return proxy as T
       }
+      return proxify
     }
     // inner_cache：Actual -> Proxy
     const inner_cache = new Map<object, WeakRef<object>>()
     // outer_cache：Proxy -> Actual
     const outer_cache = new Map<object, WeakRef<object>>()
     let outer_proxify: ProxifyType | null = null
-    function lazy_outer<T>(target: T, dummy?: object): T {
+    const lazy_outer = <T>(target: T, dummy?: object): T => {
       if (outer_proxify) {
         return outer_proxify(target, dummy)
       } else {
