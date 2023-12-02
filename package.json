@@ -1,6 +1,6 @@
 {
   "name": "secure-vm",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Experimental JavaScript sandbox based on iframe for frontend (electron, micro apps, etc).",
   "main": "./dist/index.js",
   "exports": {
