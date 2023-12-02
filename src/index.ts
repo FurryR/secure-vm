@@ -149,7 +149,7 @@ export function vm<T extends keyof typeof globalThis>(
       outer_proxify: ProxifyType,
       safe: boolean
     ): ProxifyType => {
-      let proxify = <T>(target: T, dummy?: object): T => {
+      const proxify = <T>(target: T, dummy?: object): T => {
         if (
           target === null ||
           (typeof target !== 'object' && typeof target !== 'function')
