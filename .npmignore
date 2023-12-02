@@ -1,0 +1,8 @@
+.eslintrc.json
+.eslintignore
+package-lock.json
+pnpm-lock.yaml
+tsconfig.json
+tsup.config.ts
+.github/
+src/
