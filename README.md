@@ -4,6 +4,9 @@
 
 > 🧪 Experimental `vm()` based on iframe for frontend (electron, micro apps, etc).
 
+[![CodeFactor](https://www.codefactor.io/repository/github/furryr/secure-vm/badge)](https://www.codefactor.io/repository/github/furryr/secure-vm)
+[![Visitors](https://hits.dwyl.com/FurryR/secure-vm.svg?style=flat-square)](http://github.com/FurryR/secure-vm)
+
 </div>
 
 ## ❓ What can it do?
