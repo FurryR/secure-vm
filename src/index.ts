@@ -18,7 +18,7 @@ export type Initalizer<T extends readonly (keyof typeof globalThis)[]> =
 /**
  * Default whitelist for vm().
  */
-export const DefaultWhitelist = [
+const DefaultWhitelist = [
   'atob',
   'btoa',
   'clearInterval',
@@ -255,10 +255,10 @@ export function vm<T extends keyof typeof globalThis>(
             return Reflect.isExtensible(target)
           },
           preventExtensions(): boolean {
-            return false
+            return Reflect.preventExtensions(target)
           },
-          setPrototypeOf(): boolean {
-            return false
+          setPrototypeOf(_: object, v: object | null): boolean {
+            return Reflect.setPrototypeOf(target, outer_proxify(v))
           },
           defineProperty(
             _: object,
