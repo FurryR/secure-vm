@@ -83,8 +83,7 @@ const ctx = vm()
 👽 You can bypass almost everything to your sandbox and it will work properly, for example, `Promise`. (Some functions like `ArrayBuffer` may not work properly for unknown reasons)
 
 ```js
-const ctx = vm()
-ctx.console = console
+const ctx = vm({ console })
 let callback
 ctx.test = new Promise(resolve => {
   callback = resolve
@@ -159,8 +158,8 @@ throwError() // throwError() will not be displayed in the DevTools traceback (Ed
 😎 You can customize global objects by:
 
 ```js
-const ctx = vm(iframe(['Array']))
-ctx. // type hint: Array Function
+const ctx = vm({ WebAssembly })
+ctx. // type hint: WebAssembly
 ```
 
 ...or use our default whitelist by:

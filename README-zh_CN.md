@@ -83,8 +83,7 @@ const ctx = vm()
 👽 你可以传递几乎所有东西到你的沙箱内，它们都会正常运行，比如 `Promise`（一部分函数，比如 `ArrayBuffer`，因为未知原因无法正常使用）。
 
 ```js
-const ctx = vm()
-ctx.console = console
+const ctx = vm({ console })
 let callback
 ctx.test = new Promise(resolve => {
   callback = resolve
@@ -159,8 +158,8 @@ throwError() // throwError() will not be displayed in the DevTools traceback (Ed
 😎 你可以通过以下方式自定义全局对象：
 
 ```js
-const ctx = vm(iframe(['Array']))
-ctx. // type hint: Array Function
+const ctx = vm({ WebAssembly })
+ctx. // type hint: WebAssembly
 ```
 
 ...或使用我们的默认白名单：
