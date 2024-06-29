@@ -41,6 +41,7 @@ const internalObject = [
   'encodeURIComponent',
   'escape',
   'isFinite',
+  'isNaN',
   'parseFloat',
   'parseInt',
   'unescape',
